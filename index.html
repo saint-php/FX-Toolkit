@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FX Toolkit — CV & ID Card Generator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,400&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#1E2A32; --paper:#F7F6F1; --panel:#FFFFFF;
+  --brass:#B08D57; --brass-dark:#8C6D3F; --line:#E2DFD5; --muted:#70706A;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{background:var(--paper);color:var(--ink);font-family:'Inter',sans-serif;}
+.hero{
+  padding:72px 32px 48px;
+  text-align:center;
+  border-bottom:1px solid var(--line);
+  background:var(--panel);
+  position:relative;
+  overflow:hidden;
+}
+.hero::before{
+  content:"";
+  position:absolute;
+  top:-120px; left:50%;
+  transform:translateX(-50%);
+  width:600px;height:240px;
+  background:radial-gradient(ellipse at center, rgba(176,141,87,0.14), transparent 70%);
+}
+.eyebrow{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:12px;
+  letter-spacing:2px;
+  text-transform:uppercase;
+  color:var(--brass-dark);
+  margin-bottom:14px;
+  position:relative;
+}
+.hero h1{
+  font-family:'Newsreader',serif;
+  font-weight:600;
+  font-size:clamp(32px,5vw,52px);
+  margin:0 0 16px;
+  line-height:1.1;
+  position:relative;
+}
+.hero h1 em{color:var(--brass-dark);font-style:italic;}
+.hero p{
+  max-width:520px;
+  margin:0 auto;
+  color:var(--muted);
+  font-size:15.5px;
+  line-height:1.6;
+  position:relative;
+}
+
+/* How it works */
+.how-it-works{
+  max-width:900px;
+  margin:0 auto;
+  padding:40px 32px 20px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:20px;
+}
+@media (max-width:700px){ .how-it-works{grid-template-columns:1fr;} }
+.step{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:22px 20px;
+  text-align:center;
+}
+.step-num{
+  width:32px;height:32px;
+  border-radius:50%;
+  background:var(--ink);
+  color:#fff;
+  font-weight:700;
+  font-size:14px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-bottom:12px;
+}
+.step h3{
+  font-family:'Newsreader',serif;
+  font-size:17px;
+  margin:0 0 6px;
+  font-weight:600;
+}
+.step p{
+  margin:0;
+  font-size:13px;
+  color:var(--muted);
+  line-height:1.5;
+}
+
+.cards{
+  max-width:1000px;
+  margin:30px auto 60px;
+  padding:0 32px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:24px;
+  position:relative;
+  z-index:2;
+}
+@media (max-width:760px){ .cards{grid-template-columns:1fr;} }
+.tool-card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:34px 30px;
+  box-shadow:0 14px 40px rgba(30,42,50,0.08);
+  display:flex;
+  flex-direction:column;
+  transition:transform .18s ease, box-shadow .18s ease;
+}
+.tool-card:hover{
+  transform:translateY(-4px);
+  box-shadow:0 20px 50px rgba(30,42,50,0.14);
+}
+.tool-icon{
+  width:52px;height:52px;
+  border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;
+  margin-bottom:20px;
+}
+.icon-resume{background:#EAF2EF;color:#2F6F63;}
+.icon-id{background:#F3ECDF;color:#8C6D3F;}
+.tool-card h2{
+  font-family:'Newsreader',serif;
+  font-size:23px;
+  margin:0 0 8px;
+  font-weight:600;
+}
+.tool-card p{
+  color:var(--muted);
+  font-size:13.5px;
+  line-height:1.65;
+  margin:0 0 20px;
+  flex-grow:1;
+}
+.tool-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:22px;}
+.tool-tags span{
+  font-size:11px;
+  padding:4px 10px;
+  border-radius:999px;
+  background:#F1EFE8;
+  color:var(--ink);
+  font-weight:600;
+}
+.tool-card a.cta{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:11px 20px;
+  border-radius:8px;
+  background:var(--ink);
+  color:#fff;
+  text-decoration:none;
+  font-weight:600;
+  font-size:13.5px;
+  width:fit-content;
+}
+.tool-card a.cta:hover{opacity:.88;}
+.footer-note{
+  text-align:center;
+  color:var(--muted);
+  font-size:12px;
+  padding:0 32px 50px;
+}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="eyebrow">Career Toolkit</div>
+  <h1>Two tools, one goal:<br><em>walk in prepared.</em></h1>
+  <p>Build a resume that fits the role, then design the ID badge that fits the job. Everything runs in your browser and exports straight to print, PDF, or Word.</p>
+</div>
+
+<div class="how-it-works">
+  <div class="step">
+    <div class="step-num">1</div>
+    <h3>Fill in once</h3>
+    <p>Enter your details, experience, and skills. Everything stays in your browser — nothing is uploaded.</p>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <h3>Preview & refine</h3>
+    <p>Switch templates live, run an ATS check, get skill suggestions, and save multiple versions.</p>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <h3>Export & apply</h3>
+    <p>Download PDF or Word, print, or generate print-ready ID cards (single or batch).</p>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="tool-card">
+    <div class="tool-icon icon-resume">📄</div>
+    <h2>Resume Studio</h2>
+    <p>Fill in your details once, then flip through seven distinct professional CV templates side by side. ATS check, skill suggestions, photo option, and save/reload built in.</p>
+    <div class="tool-tags">
+      <span>7 templates</span><span>ATS check</span><span>Save &amp; reload</span><span>PDF / DOCX / Print</span>
+    </div>
+    <a class="cta" href="cv-builder.html">Build my resume →</a>
+  </div>
+
+  <div class="tool-card">
+    <div class="tool-icon icon-id">🪪</div>
+    <h2>ID Card Studio</h2>
+    <p>Design print-ready professional ID badges with photo, logo, QR code, custom colors, front &amp; back, and batch generation from CSV — sized to the standard 85.6 × 54 mm format.</p>
+    <div class="tool-tags">
+      <span>4 templates</span><span>Front &amp; back</span><span>Batch CSV</span><span>Custom colors</span>
+    </div>
+    <a class="cta" href="id-card-generator.html">Design an ID card →</a>
+  </div>
+</div>
+
+<p class="footer-note">All data stays in your browser — nothing is uploaded or stored on a server. For sharing a link, host the folder on Netlify, GitHub Pages, or any static host.</p>
+
+</body>
+</html>

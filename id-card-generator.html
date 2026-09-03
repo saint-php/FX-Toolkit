@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ID Card Studio — Career Toolkit</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🪪</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,600;1,400&family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{
+  --ink:#1E2A32; --paper:#F7F6F1; --panel:#FFFFFF;
+  --brass:#B08D57; --brass-dark:#8C6D3F; --line:#E2DFD5; --muted:#70706A;
+  --accent:#1F3864;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{background:var(--paper);color:var(--ink);font-family:'Inter',sans-serif;}
+.app-header{padding:18px 28px 14px;border-bottom:1px solid var(--line);background:var(--panel);
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.app-header h1{font-family:'Newsreader',serif;font-weight:600;font-size:24px;margin:0;}
+.app-header h1 span{color:var(--brass-dark);font-style:italic;}
+.app-header p{margin:2px 0 0;color:var(--muted);font-size:12.5px;}
+.app-header a{font-size:12.5px;color:var(--muted);text-decoration:none;font-weight:600;}
+.layout{display:grid;grid-template-columns:380px 1fr;min-height:calc(100vh - 70px);}
+@media (max-width:980px){.layout{grid-template-columns:1fr;}}
+
+.form-panel{background:var(--panel);border-right:1px solid var(--line);padding:18px 18px 50px;overflow-y:auto;max-height:calc(100vh - 70px);}
+.form-section{margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--line);}
+.form-section:last-child{border-bottom:none;}
+.form-section h2{font-family:'Space Grotesk',sans-serif;font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--brass-dark);margin:0 0 10px;display:flex;align-items:center;gap:8px;}
+.form-section h2::before{content:"";width:12px;height:1px;background:var(--brass-dark);display:inline-block;}
+.field{margin-bottom:9px;}
+.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:3px;font-weight:500;}
+.field input,.field select,.field textarea{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:6px;font-family:'Inter',sans-serif;font-size:13px;background:#FCFCFA;color:var(--ink);}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--brass);background:#fff;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.upload-box{border:1px dashed var(--line);border-radius:8px;padding:12px;text-align:center;background:#FCFCFA;}
+.upload-box input{margin-top:5px;font-size:12px;}
+.upload-preview{display:flex;align-items:center;gap:8px;margin-top:6px;}
+.upload-preview img{width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--line);}
+.clear-btn{background:none;border:none;color:#B5473A;font-size:11px;font-weight:600;cursor:pointer;}
+.hint{font-size:11px;color:var(--muted);margin-top:2px;}
+.color-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.color-swatch{width:28px;height:28px;border-radius:6px;border:2px solid transparent;cursor:pointer;}
+.color-swatch.active{border-color:var(--ink);}
+.color-swatch input{opacity:0;width:0;height:0;position:absolute;}
+
+.preview-panel{padding:18px 22px 50px;overflow-y:auto;max-height:calc(100vh - 70px);}
+.tpl-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.tpl-tab{padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel);font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);}
+.tpl-tab.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+.side-tabs{display:flex;gap:6px;margin-bottom:12px;}
+.side-tab{padding:6px 14px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:12px;font-weight:600;cursor:pointer;color:var(--muted);}
+.side-tab.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+.actions-bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+.actions-bar button{padding:8px 14px;border-radius:7px;border:1px solid var(--ink);background:var(--ink);color:#fff;font-weight:600;font-size:12px;cursor:pointer;}
+.actions-bar button.secondary{background:#fff;color:var(--ink);}
+.actions-bar button:hover{opacity:.88;}
+.preview-wrap{background:#DCDAD1;padding:36px;border-radius:10px;display:flex;justify-content:center;align-items:center;min-height:280px;gap:24px;flex-wrap:wrap;}
+
+.idcard{width:340px;height:214px;position:relative;overflow:hidden;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.22);background:#fff;font-family:'Inter',sans-serif;}
+.avatar{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#ccc;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px;overflow:hidden;}
+.avatar img{width:100%;height:100%;object-fit:cover;}
+.logo-img{max-height:22px;max-width:90px;object-fit:contain;}
+
+/* Front templates use CSS vars for accent */
+.card-corporate .band{background:var(--accent);height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;}
+.card-corporate .band .company{color:#fff;font-weight:700;font-size:13px;letter-spacing:.3px;}
+.card-corporate .content{padding:0 16px;display:flex;gap:12px;align-items:flex-start;margin-top:-24px;}
+.card-corporate .avatar{border:3px solid #fff;background:var(--accent);}
+.card-corporate .info{padding-top:30px;}
+.card-corporate .info h2{margin:0;font-size:15px;color:#1a1a1a;font-weight:800;}
+.card-corporate .info .role{font-size:11px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.4px;}
+.card-corporate .meta{position:absolute;bottom:10px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-end;font-size:9.5px;color:#333;}
+.card-corporate .meta .idnum{font-weight:700;color:var(--accent);font-size:11px;}
+.card-corporate .qrbox{width:44px;height:44px;}
+
+.card-minimal{display:flex;}
+.card-minimal .stripe{width:10px;background:var(--accent);}
+.card-minimal .content{display:flex;gap:12px;padding:18px 16px;flex:1;}
+.card-minimal .avatar{border-radius:8px;background:var(--accent);}
+.card-minimal .info h2{margin:0 0 2px;font-size:15px;color:#1a1a1a;font-weight:700;}
+.card-minimal .info .role{font-size:11px;color:var(--accent);font-weight:600;margin-bottom:8px;}
+.card-minimal .info .company{font-size:10.5px;color:#666;margin-bottom:10px;}
+.card-minimal .meta{font-size:9.5px;color:#555;line-height:1.6;}
+.card-minimal .qrbox{position:absolute;bottom:12px;right:14px;width:42px;height:42px;}
+
+.card-exec{background:#1B1B1F;color:#fff;padding:16px;}
+.card-exec .topline{height:2px;background:var(--accent);margin-bottom:12px;}
+.card-exec .content{display:flex;gap:12px;align-items:center;}
+.card-exec .avatar{border:2px solid var(--accent);background:#333;}
+.card-exec .info h2{margin:0;font-family:'Newsreader',serif;font-size:16px;color:#fff;}
+.card-exec .info .role{font-size:10.5px;color:var(--accent);letter-spacing:.5px;text-transform:uppercase;margin-top:2px;}
+.card-exec .company{font-size:10px;color:#B7B2A8;margin-top:2px;}
+.card-exec .meta{position:absolute;bottom:12px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:flex-end;font-size:9px;color:#C9C6C0;}
+.card-exec .meta .idnum{color:var(--accent);font-weight:700;font-size:10.5px;}
+.card-exec .qrbox{width:40px;height:40px;filter:invert(1);}
+
+.card-split{background:#fff;}
+.card-split .accent{position:absolute;top:0;right:0;width:130px;height:130px;background:linear-gradient(135deg,var(--accent),#2F6F63);clip-path:polygon(100% 0,0 0,100% 100%);}
+.card-split .content{position:relative;padding:16px;display:flex;gap:12px;align-items:flex-end;height:100%;}
+.card-split .avatar{border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.2);background:var(--accent);}
+.card-split .info h2{margin:0;font-size:15px;font-weight:800;color:#1a1a1a;}
+.card-split .info .role{font-size:10.5px;color:var(--accent);font-weight:700;text-transform:uppercase;}
+.card-split .info .company{font-size:10px;color:#777;margin-top:2px;}
+.card-split .meta{position:absolute;bottom:10px;right:14px;text-align:right;font-size:9px;color:#555;}
+.card-split .meta .idnum{font-weight:700;color:var(--accent);font-size:10.5px;}
+.card-split .qrbox{width:0;height:0;}
+.card-split .company-top{position:absolute;top:8px;left:16px;font-size:10px;font-weight:700;color:#fff;z-index:2;}
+
+/* Back of card */
+.card-back{background:#f8f8f6;display:flex;flex-direction:column;padding:16px;font-size:10px;color:#333;}
+.card-back .back-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #ddd;}
+.card-back .back-header .org{font-weight:700;font-size:12px;color:var(--accent);}
+.card-back .barcode-area{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;}
+.card-back .barcode{height:40px;width:80%;background:repeating-linear-gradient(90deg,#111 0,#111 2px,transparent 2px,transparent 4px);border-radius:2px;}
+.card-back .barcode-num{font-family:monospace;font-size:11px;letter-spacing:1px;}
+.card-back .terms{font-size:8.5px;color:#666;line-height:1.4;margin-top:8px;}
+.card-back .sig-line{margin-top:10px;border-top:1px solid #999;padding-top:4px;font-size:9px;color:#555;}
+.card-back .return-addr{font-size:8.5px;color:#555;margin-top:auto;}
+
+.notes-section{margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;max-width:720px;}
+.notes-section h2{font-family:'Space Grotesk',sans-serif;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--brass-dark);margin:0 0 8px;}
+.notes-section p{font-size:12px;color:var(--muted);margin:0;line-height:1.6;}
+
+.batch-section{margin-top:16px;}
+.batch-list{max-height:160px;overflow-y:auto;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:8px;background:#FCFCFA;}
+.batch-list div{padding:3px 0;border-bottom:1px solid var(--line);}
+.batch-list div:last-child{border-bottom:none;}
+
+@media print{
+  body *{visibility:hidden;}
+  #cardPreview,#cardPreview *{visibility:visible;}
+  #cardPreview{position:absolute;top:0;left:0;box-shadow:none;}
+  @page{size:85.6mm 54mm;margin:0;}
+}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div>
+    <h1>ID Card <span>Studio</span></h1>
+    <p>Print-ready badges · front &amp; back · custom colors · batch from CSV</p>
+  </div>
+  <div><a href="index.html">← Back to toolkit</a></div>
+</div>
+
+<div class="layout">
+  <aside class="form-panel" id="formPanel">
+
+    <div class="form-section">
+      <h2>Organization</h2>
+      <div class="field"><label>Company / organization name</label><input data-bind="company" placeholder="Eagle's Peak Global Academy"></div>
+      <div class="upload-box">
+        <label style="font-size:11px;color:var(--muted);font-weight:500;">Company logo (optional)</label><br>
+        <input type="file" id="logoInput" accept="image/*">
+        <div class="upload-preview" id="logoPreview" style="display:none;"><img id="logoImg"><button class="clear-btn" id="clearLogo">Remove</button></div>
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label>Brand color</label>
+        <div class="color-row">
+          <div class="color-swatch active" data-color="#1F3864" style="background:#1F3864" title="Navy"></div>
+          <div class="color-swatch" data-color="#2F6F63" style="background:#2F6F63" title="Teal"></div>
+          <div class="color-swatch" data-color="#8C6D3F" style="background:#8C6D3F" title="Brass"></div>
+          <div class="color-swatch" data-color="#5B2C6F" style="background:#5B2C6F" title="Purple"></div>
+          <div class="color-swatch" data-color="#922B21" style="background:#922B21" title="Maroon"></div>
+          <label class="color-swatch" style="background:conic-gradient(red,yellow,green,blue,red);position:relative;" title="Custom">
+            <input type="color" id="customColor" value="#1F3864">
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2>Cardholder</h2>
+      <div class="upload-box">
+        <label style="font-size:11px;color:var(--muted);font-weight:500;">Photo (optional)</label><br>
+        <input type="file" id="photoInput" accept="image/*">
+        <div class="upload-preview" id="photoPreview" style="display:none;"><img id="photoImg"><button class="clear-btn" id="clearPhoto">Remove</button></div>
+      </div>
+      <div class="field" style="margin-top:8px;"><label>Full name</label><input data-bind="fullName" placeholder="Saint Ibrahim"></div>
+      <div class="row2">
+        <div class="field"><label>Job title / role</label><input data-bind="title" placeholder="Lab Coordinator"></div>
+        <div class="field"><label>Department</label><input data-bind="department" placeholder="STEM Nexus"></div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2>Card details</h2>
+      <div class="row2">
+        <div class="field"><label>ID number</label><input data-bind="idNumber" placeholder="EPGA-2026-014"></div>
+        <div class="field"><label>Blood group</label><input data-bind="bloodGroup" placeholder="O+"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Issue date</label><input type="date" data-bind="issueDate"></div>
+        <div class="field"><label>Expiry date</label><input type="date" data-bind="expiryDate"></div>
+      </div>
+      <div class="field"><label>Return / office address (back of card)</label>
+        <input data-bind="returnAddress" placeholder="If found, return to: EPGA Admin, Abuja">
+      </div>
+      <div class="field"><label>Terms / note (back of card)</label>
+        <textarea data-bind="terms" rows="2" placeholder="This card is the property of the organization. Report loss immediately."></textarea>
+      </div>
+      <p class="hint">QR encodes name + ID + organization. Barcode on back is a visual representation of the ID number.</p>
+    </div>
+
+    <div class="form-section batch-section">
+      <h2>Batch mode</h2>
+      <p class="hint" style="margin-bottom:8px;">Upload a CSV with columns: fullName, title, department, idNumber, bloodGroup (header row required). Shared org/logo/color apply to all.</p>
+      <input type="file" id="csvInput" accept=".csv,text/csv">
+      <div class="batch-list" id="batchList" style="display:none;margin-top:8px;"></div>
+      <button id="btnBatchPng" class="secondary" style="margin-top:8px;display:none;width:100%;padding:8px;border-radius:6px;border:1px solid var(--ink);background:#fff;font-weight:600;font-size:12px;cursor:pointer;">⬇ Download all as PNG (zip)</button>
+    </div>
+
+  </aside>
+
+  <main class="preview-panel">
+    <div class="tpl-tabs" id="tplTabs">
+      <button class="tpl-tab active" data-tpl="corporate">Corporate Navy</button>
+      <button class="tpl-tab" data-tpl="minimal">Minimal White</button>
+      <button class="tpl-tab" data-tpl="exec">Executive Gold</button>
+      <button class="tpl-tab" data-tpl="split">Modern Split</button>
+    </div>
+    <div class="side-tabs">
+      <button class="side-tab active" data-side="front">Front</button>
+      <button class="side-tab" data-side="back">Back</button>
+    </div>
+    <div class="actions-bar">
+      <button id="btnPrint">🖨 Print</button>
+      <button id="btnPng" class="secondary">⬇ PNG</button>
+      <button id="btnPdf" class="secondary">⬇ PDF</button>
+    </div>
+    <div class="preview-wrap">
+      <div class="idcard card-corporate" id="cardPreview" style="--accent:#1F3864"></div>
+    </div>
+
+    <section class="notes-section">
+      <h2>Printing tips</h2>
+      <p>PNG and PDF exports match CR80 (85.6 × 54 mm). For double-sided print, export front and back separately (or print both pages). Use a PVC card printer or print shop. For paper proof, Print → “Actual size”.</p>
+    </section>
+  </main>
+</div>
+
+<script>
+let state = {
+  company:'', fullName:'', title:'', department:'', idNumber:'', bloodGroup:'',
+  issueDate:'', expiryDate:'', photoData:'', logoData:'',
+  returnAddress:'', terms:'This card remains the property of the organization. If found, please return to the address below.',
+  accent:'#1F3864'
+};
+let currentTpl = 'corporate';
+let currentSide = 'front';
+let batchRows = [];
+
+function esc(str){ return (str||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function initials(name){
+  const parts=(name||'').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return 'YN';
+  return (parts[0][0] + (parts[1]? parts[1][0]:'')).toUpperCase();
+}
+function fmtDate(v){
+  if(!v) return '';
+  const d = new Date(v+'T00:00:00');
+  if(isNaN(d)) return v;
+  return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+}
+function avatarInner(){
+  if(state.photoData) return `<img src="${state.photoData}">`;
+  return initials(state.fullName);
+}
+
+document.getElementById('formPanel').addEventListener('input', e=>{
+  const bindEl = e.target.closest('[data-bind]');
+  if(bindEl){ state[bindEl.dataset.bind] = bindEl.value; renderPreview(); }
+});
+
+function setupUpload(inputId, previewId, imgId, clearId, stateKey){
+  const input = document.getElementById(inputId);
+  const preview = document.getElementById(previewId);
+  const img = document.getElementById(imgId);
+  const clearBtn = document.getElementById(clearId);
+  input.addEventListener('change', e=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ev=>{
+      state[stateKey] = ev.target.result;
+      img.src = ev.target.result;
+      preview.style.display='flex';
+      renderPreview();
+    };
+    reader.readAsDataURL(file);
+  });
+  clearBtn.addEventListener('click', ()=>{
+    state[stateKey]='';
+    input.value='';
+    preview.style.display='none';
+    renderPreview();
+  });
+}
+setupUpload('photoInput','photoPreview','photoImg','clearPhoto','photoData');
+setupUpload('logoInput','logoPreview','logoImg','clearLogo','logoData');
+
+/* Color */
+document.querySelectorAll('.color-swatch[data-color]').forEach(sw=>{
+  sw.addEventListener('click', ()=>{
+    document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('active'));
+    sw.classList.add('active');
+    state.accent = sw.dataset.color;
+    renderPreview();
+  });
+});
+document.getElementById('customColor').addEventListener('input', e=>{
+  document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('active'));
+  e.target.closest('.color-swatch').classList.add('active');
+  state.accent = e.target.value;
+  renderPreview();
+});
+
+function renderCorporate(d){
+  return `
+  <div class="band">
+    ${d.logoData? `<img class="logo-img" src="${d.logoData}">` : `<span class="company">${esc(d.company)||'Your Organization'}</span>`}
+    <span style="color:rgba(255,255,255,0.85);font-size:9px;font-weight:700;letter-spacing:1px;">ID CARD</span>
+  </div>
+  <div class="content">
+    <div class="avatar">${avatarInner()}</div>
+    <div class="info">
+      <h2>${esc(d.fullName)||'Full Name'}</h2>
+      <div class="role">${esc(d.title)||'Job Title'}</div>
+    </div>
+  </div>
+  <div class="meta">
+    <div>
+      <div class="idnum">${esc(d.idNumber)||'ID-000000'}</div>
+      ${d.department? `<div>${esc(d.department)}</div>`:''}
+      ${d.expiryDate? `<div>Exp: ${fmtDate(d.expiryDate)}</div>`:''}
+    </div>
+    <div class="qrbox" id="qrHolder"></div>
+  </div>`;
+}
+function renderMinimal(d){
+  return `
+  <div class="stripe"></div>
+  <div class="content">
+    <div class="avatar">${avatarInner()}</div>
+    <div class="info">
+      <h2>${esc(d.fullName)||'Full Name'}</h2>
+      <div class="role">${esc(d.title)||'Job Title'}</div>
+      <div class="company">${esc(d.company)||'Organization'}${d.department? ' · '+esc(d.department):''}</div>
+      <div class="meta">
+        ID: ${esc(d.idNumber)||'—'}<br>
+        ${d.issueDate? 'Issued: '+fmtDate(d.issueDate)+'<br>':''}
+        ${d.expiryDate? 'Expires: '+fmtDate(d.expiryDate):''}
+        ${d.bloodGroup? '<br>Blood group: '+esc(d.bloodGroup):''}
+      </div>
+    </div>
+  </div>
+  <div class="qrbox" id="qrHolder"></div>`;
+}
+function renderExec(d){
+  return `
+  <div class="topline"></div>
+  <div class="content">
+    <div class="avatar">${avatarInner()}</div>
+    <div class="info">
+      <h2>${esc(d.fullName)||'Full Name'}</h2>
+      <div class="role">${esc(d.title)||'Job Title'}</div>
+      <div class="company">${esc(d.company)||'Organization'}</div>
+    </div>
+  </div>
+  <div class="meta">
+    <div>
+      <div class="idnum">${esc(d.idNumber)||'ID-000000'}</div>
+      ${d.expiryDate? `<div>Exp: ${fmtDate(d.expiryDate)}</div>`:''}
+    </div>
+    <div class="qrbox" id="qrHolder"></div>
+  </div>`;
+}
+function renderSplit(d){
+  return `
+  <div class="accent"></div>
+  <div class="company-top">${esc(d.company)||'Organization'}</div>
+  <div class="content">
+    <div class="avatar">${avatarInner()}</div>
+    <div class="info">
+      <h2>${esc(d.fullName)||'Full Name'}</h2>
+      <div class="role">${esc(d.title)||'Job Title'}</div>
+      ${d.department? `<div class="company">${esc(d.department)}</div>`:''}
+    </div>
+  </div>
+  <div class="meta">
+    <div class="idnum">${esc(d.idNumber)||'ID-000000'}</div>
+    ${d.expiryDate? `<div>Exp: ${fmtDate(d.expiryDate)}</div>`:''}
+  </div>`;
+}
+function renderBack(d){
+  const id = d.idNumber || 'ID-000000';
+  return `
+  <div class="back-header">
+    <span class="org">${esc(d.company)||'Organization'}</span>
+    <span style="font-size:9px;color:#888;">OFFICIAL ID</span>
+  </div>
+  <div class="barcode-area">
+    <div class="barcode" title="Visual barcode"></div>
+    <div class="barcode-num">${esc(id)}</div>
+  </div>
+  <div class="terms">${esc(d.terms||'')}</div>
+  <div class="sig-line">Authorized signature ________________</div>
+  <div class="return-addr">${esc(d.returnAddress||'If found, please return to the issuing organization.')}</div>
+  `;
+}
+
+const TEMPLATE_RENDERERS = { corporate:renderCorporate, minimal:renderMinimal, exec:renderExec, split:renderSplit };
+const TEMPLATE_CLASS = { corporate:'card-corporate', minimal:'card-minimal', exec:'card-exec', split:'card-split' };
+
+function renderPreview(){
+  const el = document.getElementById('cardPreview');
+  el.style.setProperty('--accent', state.accent);
+  if(currentSide === 'back'){
+    el.className = 'idcard card-back';
+    el.innerHTML = renderBack(state);
+    return;
+  }
+  el.className = 'idcard ' + TEMPLATE_CLASS[currentTpl];
+  el.innerHTML = TEMPLATE_RENDERERS[currentTpl](state);
+  const qrHolder = document.getElementById('qrHolder');
+  if(qrHolder){
+    const qrText = [state.fullName, state.idNumber, state.company].filter(Boolean).join(' | ') || 'ID Card Studio';
+    new QRCode(qrHolder, { text: qrText, width: 80, height: 80, correctLevel: QRCode.CorrectLevel.M });
+    const canvas = qrHolder.querySelector('canvas');
+    if(canvas){ canvas.style.width='100%'; canvas.style.height='100%'; }
+    const img = qrHolder.querySelector('img');
+    if(img){ img.style.width='100%'; img.style.height='100%'; }
+  }
+}
+
+document.getElementById('tplTabs').addEventListener('click', e=>{
+  const btn = e.target.closest('.tpl-tab');
+  if(!btn) return;
+  document.querySelectorAll('.tpl-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentTpl = btn.dataset.tpl;
+  if(currentSide === 'front') renderPreview();
+});
+document.querySelector('.side-tabs').addEventListener('click', e=>{
+  const btn = e.target.closest('.side-tab');
+  if(!btn) return;
+  document.querySelectorAll('.side-tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  currentSide = btn.dataset.side;
+  renderPreview();
+});
+
+document.getElementById('btnPrint').addEventListener('click', ()=> window.print());
+document.getElementById('btnPng').addEventListener('click', ()=>{
+  const el = document.getElementById('cardPreview');
+  const name = (state.fullName || 'id_card').trim().replace(/\s+/g,'_') + '_' + currentSide;
+  html2canvas(el, {scale:4, useCORS:true}).then(canvas=>{
+    const link = document.createElement('a');
+    link.download = name + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+});
+document.getElementById('btnPdf').addEventListener('click', ()=>{
+  const el = document.getElementById('cardPreview');
+  const name = (state.fullName || 'id_card').trim().replace(/\s+/g,'_') + '_' + currentSide;
+  html2pdf().set({
+    margin:0, filename: name + '.pdf',
+    image:{type:'jpeg', quality:0.98},
+    html2canvas:{scale:4, useCORS:true},
+    jsPDF:{unit:'mm', format:[85.6,54], orientation:'landscape'}
+  }).from(el).save();
+});
+
+/* Batch CSV */
+function parseCSV(text){
+  const lines = text.trim().split(/\r?\n/);
+  if(lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/['"]/g,''));
+  return lines.slice(1).map(line=>{
+    const cols = line.split(',').map(c=>c.trim().replace(/^["']|["']$/g,''));
+    const row = {};
+    headers.forEach((h,i)=> row[h] = cols[i]||'');
+    return {
+      fullName: row.fullname || row.name || row['full name'] || '',
+      title: row.title || row.role || row['job title'] || '',
+      department: row.department || row.dept || '',
+      idNumber: row.idnumber || row.id || row['id number'] || '',
+      bloodGroup: row.bloodgroup || row.blood || ''
+    };
+  }).filter(r=>r.fullName);
+}
+document.getElementById('csvInput').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    batchRows = parseCSV(ev.target.result);
+    const list = document.getElementById('batchList');
+    const btn = document.getElementById('btnBatchPng');
+    if(!batchRows.length){
+      list.style.display='none';
+      btn.style.display='none';
+      alert('No valid rows found. Need header + fullName column.');
+      return;
+    }
+    list.style.display='block';
+    btn.style.display='block';
+    list.innerHTML = batchRows.map((r,i)=>`<div>${i+1}. ${esc(r.fullName)} — ${esc(r.title||'')} (${esc(r.idNumber||'no ID')})</div>`).join('');
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('btnBatchPng').addEventListener('click', async ()=>{
+  if(!batchRows.length) return;
+  // Simple sequential download (no zip lib to keep dependency-free)
+  // User gets multiple files; for true zip would need JSZip
+  alert('Downloading ' + batchRows.length + ' cards one by one. Allow multiple downloads if prompted.');
+  const original = {...state};
+  for(let i=0;i<batchRows.length;i++){
+    const r = batchRows[i];
+    state.fullName = r.fullName;
+    state.title = r.title;
+    state.department = r.department;
+    state.idNumber = r.idNumber;
+    state.bloodGroup = r.bloodGroup;
+    state.photoData = ''; // batch has no per-person photos in this simple mode
+    currentSide = 'front';
+    renderPreview();
+    await new Promise(res=>{
+      const el = document.getElementById('cardPreview');
+      html2canvas(el, {scale:3, useCORS:true}).then(canvas=>{
+        const link = document.createElement('a');
+        link.download = (r.fullName||'card').replace(/\s+/g,'_') + '_id.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        setTimeout(res, 400);
+      });
+    });
+  }
+  Object.assign(state, original);
+  renderPreview();
+});
+
+renderPreview();
+</script>
+</body>
+</html>
