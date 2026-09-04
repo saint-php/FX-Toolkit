@@ -1025,8 +1025,11 @@ document.getElementById('importJson').addEventListener('change', e=>{
 /* ============================================================
    EXPORT
    ============================================================ */
-document.getElementById('btnPrint').addEventListener('click', ()=> window.print());
+document.getElementById('btnPrint').addEventListener('click', ()=>{
+  CTAuth.gate('cv', ()=> window.print());
+});
 document.getElementById('btnPdf').addEventListener('click', ()=>{
+  CTAuth.gate('cv', ()=>{
   const el = document.getElementById('resumePreview');
   const name = (state.personal.fullName || 'resume').trim().replace(/\s+/g,'_');
   html2pdf().set({
@@ -1035,8 +1038,11 @@ document.getElementById('btnPdf').addEventListener('click', ()=>{
     html2canvas:{scale:2, useCORS:true},
     jsPDF:{unit:'pt', format:'a4', orientation:'portrait'}
   }).from(el).save();
+  });
 });
-document.getElementById('btnDocx').addEventListener('click', async ()=>{
+
+document.getElementById('btnDocx').addEventListener('click', ()=>{
+  CTAuth.gate('cv', async ()=>{
   const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } = window.docx;
   const d = getResumeData();
   const accent = {modern:'2F6F63', classic:'1E1E1E', minimal:'111111', executive:'8C6D3F', creative:'204C43', navy:'1F3864', execteal:'1F4B45'}[currentTpl];
@@ -1097,7 +1103,9 @@ document.getElementById('btnDocx').addEventListener('click', async ()=>{
   a.href = url; a.download = (state.personal.fullName || 'resume').trim().replace(/\s+/g,'_') + '.docx';
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
+  });
 });
+
 
 /* ============================================================
    JOB LINKS
@@ -1136,5 +1144,10 @@ renderJobLinks();
 renderSkillSuggestions();
 renderVersionList();
 </script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="auth-pay.js"></script>
+
 </body>
 </html>
