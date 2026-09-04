@@ -1,6 +1,8 @@
 /**
- * Career Toolkit — Supabase auth, usage limits, Paystack, PropellerAds
- * Requires: config.js, Supabase JS CDN, (optional) Paystack + Propeller tags
+ * Career Toolkit — Secure auth, usage limits, Paystack + Edge Function
+ * - Client never writes is_premium or usage counts directly
+ * - Premium is granted only by the verify-paystack Edge Function after real verification
+ * - Usage increments go through a SECURITY DEFINER RPC
  */
 (function (global) {
   const cfg = global.CT_CONFIG || {};
@@ -51,9 +53,13 @@
       .select('is_premium, cv_count, id_count, full_name')
       .eq('id', sessionUser.id)
       .maybeSingle();
-    if (error) { console.warn('profile load', error); profile = { is_premium: false, cv_count: 0, id_count: 0 }; return; }
+    if (error) {
+      console.warn('profile load', error);
+      profile = { is_premium: false, cv_count: 0, id_count: 0 };
+      return;
+    }
     if (!data) {
-      // create row
+      // create row (insert is allowed by RLS)
       const { data: created } = await sb.from('profiles').insert({
         id: sessionUser.id,
         full_name: sessionUser.name,
@@ -80,7 +86,6 @@
         options: { data: { name: (name || email.split('@')[0]).trim() } }
       });
       if (error) return { ok: false, error: error.message };
-      // If email confirmation is ON, session may be null until they confirm
       if (!data.session) {
         return {
           ok: false,
@@ -135,13 +140,17 @@
     };
   }
 
+  /** Safe increment via SECURITY DEFINER RPC — client cannot set arbitrary values */
   async function incrementUsage(type) {
     const sb = ensureSupabase();
-    if (!sb || !sessionUser || !profile) return;
-    const field = type === 'cv' ? 'cv_count' : 'id_count';
-    const next = (profile[field] || 0) + 1;
-    const { error } = await sb.from('profiles').update({ [field]: next }).eq('id', sessionUser.id);
-    if (!error) profile[field] = next;
+    if (!sb || !sessionUser) return;
+    const { data, error } = await sb.rpc('increment_usage', { p_type: type });
+    if (error) {
+      console.warn('increment_usage failed', error);
+      return;
+    }
+    // refresh local profile
+    await loadProfile();
   }
 
   function canGenerate(type) {
@@ -155,13 +164,6 @@
         : 'Free limit reached (1 ID card). Unlock unlimited or watch ads for one more.',
       usage
     };
-  }
-
-  async function setPremium() {
-    const sb = ensureSupabase();
-    if (!sb || !sessionUser) return;
-    await sb.from('profiles').update({ is_premium: true }).eq('id', sessionUser.id);
-    if (profile) profile.is_premium = true;
   }
 
   // ---------- UI ----------
@@ -283,9 +285,17 @@
     document.getElementById('ct-ads').onclick = () => startAdFlow(type, onUnlocked);
   }
 
+  /**
+   * Paystack flow (secure):
+   * 1. Open Paystack widget with a unique reference
+   * 2. On client success callback → call Edge Function with that reference
+   * 3. Edge Function verifies with Paystack secret key and grants premium
+   */
   function startPaystack(onUnlocked) {
     const key = cfg.PAYSTACK_PUBLIC_KEY || '';
     const amount = cfg.PRICE_KOBO || 100000;
+    const fnUrl = (cfg.VERIFY_FUNCTION_URL || '').trim();
+
     if (typeof PaystackPop === 'undefined') {
       const scr = document.createElement('script');
       scr.src = 'https://js.paystack.co/v1/inline.js';
@@ -293,42 +303,89 @@
       document.head.appendChild(scr);
       return;
     }
-    if (!key || key.includes('xxxx')) {
-      if (confirm('Paystack key not set in config.js.\nSimulate successful ₦1,000 payment?')) {
-        setPremium().then(() => {
-          closeModal();
-          if (onUnlocked) onUnlocked('premium');
-          renderAuthBar();
-          alert('Premium unlocked (demo).');
-        });
-      }
+
+    if (!key || key.includes('xxxx') || key.includes('YOUR_')) {
+      alert('Paystack public key not set in config.js.\nAdd your pk_test_ or pk_live_ key and try again.');
       return;
     }
+
+    if (!fnUrl) {
+      alert('VERIFY_FUNCTION_URL is empty in config.js.\nDeploy the Edge Function first and paste its URL.');
+      return;
+    }
+
+    const reference = 'CT-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
     const handler = PaystackPop.setup({
       key,
       email: sessionUser.email,
       amount,
       currency: 'NGN',
-      ref: 'CT-' + Date.now(),
-      callback: function () {
-        setPremium().then(() => {
-          closeModal();
-          if (onUnlocked) onUnlocked('premium');
-          renderAuthBar();
-          alert('Payment successful! Unlimited unlocked.');
-        });
+      ref: reference,
+      callback: function (response) {
+        // response.reference should match what we sent
+        verifyAndGrant(response.reference || reference, onUnlocked);
       },
       onClose: function () {}
     });
     handler.openIframe();
   }
 
+  async function verifyAndGrant(reference, onUnlocked) {
+    const sb = ensureSupabase();
+    if (!sb || !sessionUser) {
+      alert('Session expired. Please log in again.');
+      return;
+    }
+
+    const fnUrl = (cfg.VERIFY_FUNCTION_URL || '').trim();
+    if (!fnUrl) {
+      alert('VERIFY_FUNCTION_URL missing.');
+      return;
+    }
+
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session?.access_token) {
+        alert('No valid session. Please log in again.');
+        return;
+      }
+
+      const res = await fetch(fnUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': cfg.SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify({ reference })
+      });
+
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        console.error('verify-paystack error', body);
+        alert(body.error || 'Payment verification failed. Contact support with reference: ' + reference);
+        return;
+      }
+
+      // Success — refresh profile so is_premium becomes true
+      await loadProfile();
+      closeModal();
+      if (onUnlocked) onUnlocked('premium');
+      renderAuthBar();
+      alert('Payment verified! Unlimited unlocked.');
+    } catch (e) {
+      console.error(e);
+      alert('Could not reach verification server. Check your internet and try again.');
+    }
+  }
+
   /**
-   * Unlock ads: only when user chooses "Watch 2 ads".
-   * Uses PROPELLER_DIRECT_LINK (Monetag Direct Link).
-   * Opens on real user clicks (popup blockers block setTimeout opens).
-   *
-   * Soft revenue: optional bar on tool pages only (does not hijack nav links).
+   * Ad unlock (placeholder).
+   * This is still a timer-based flow. Replace later with a real rewarded ad SDK
+   * that provides a signed callback. For now it decrements the free count via RPC
+   * so the user can generate one more time.
    */
   function openDirectAd() {
     const url = (cfg.PROPELLER_DIRECT_LINK || '').trim();
@@ -338,7 +395,6 @@
     }
     const w = window.open(url, '_blank', 'noopener,noreferrer');
     if (!w) {
-      // Popup blocked — navigate top window as fallback so something always shows
       window.location.href = url;
       return true;
     }
@@ -349,18 +405,18 @@
     let remaining = 2;
     const directLink = (cfg.PROPELLER_DIRECT_LINK || '').trim();
     if (!directLink) {
-      alert('No ad link set. Add PROPELLER_DIRECT_LINK in config.js (Monetag Direct Link).');
+      alert('No ad link set. Add PROPELLER_DIRECT_LINK in config.js.');
       return;
     }
 
-    function grantOne() {
+    async function grantOne() {
+      // Give one extra free generation by decreasing the used count via RPC
+      // (or you can later make a dedicated "grant_extra" RPC)
       const sb = ensureSupabase();
-      if (sb && sessionUser && profile) {
-        const field = type === 'cv' ? 'cv_count' : 'id_count';
-        const next = Math.max(0, (profile[field] || 0) - 1);
-        sb.from('profiles').update({ [field]: next }).eq('id', sessionUser.id).then(() => {
-          profile[field] = next;
-        });
+      if (sb && sessionUser) {
+        // Simple approach: call a small RPC that subtracts 1 (with floor at 0)
+        await sb.rpc('grant_extra_generation', { p_type: type }).catch(() => {});
+        await loadProfile();
       }
       closeModal();
       if (onUnlocked) onUnlocked('ad');
@@ -423,7 +479,7 @@
     showOneAd();
   }
 
-  /** Non-intrusive revenue: tool pages only, user must click (no link hijack) */
+  /** Soft revenue bar — tool pages only */
   function injectSoftRevenue() {
     if (cfg.SOFT_ADS_ENABLED === false) return;
     const link = (cfg.PROPELLER_DIRECT_LINK || '').trim();
@@ -456,7 +512,40 @@
     }
     showPaywall(type, (how) => {
       doExport();
-      incrementUsage(type).then(() => renderAuthBar());
+      // After ad unlock we already adjusted the count; after premium we don't need to increment
+      if (how !== 'premium') {
+        incrementUsage(type).then(() => renderAuthBar());
+      } else {
+        renderAuthBar();
+      }
+    });
+  }
+
+  // Block Ctrl+P / Cmd+P while the free limit is active
+  function installPrintGuard() {
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        if (!sessionUser) {
+          e.preventDefault();
+          showAuthModal('login');
+          return;
+        }
+        // If user is on a tool page and still has free quota left, allow native print
+        // Once free quota is used and not premium, block it
+        const page = (location.pathname || '').toLowerCase();
+        const isCv = page.includes('cv-builder');
+        const isId = page.includes('id-card');
+        if (!isCv && !isId) return;
+
+        if (isPremium()) return; // unlimited → allow
+
+        const usage = getUsage();
+        const used = isCv ? (usage.cv || 0) : (usage.id || 0);
+        if (used >= 1) {
+          e.preventDefault();
+          showPaywall(isCv ? 'cv' : 'id', () => {});
+        }
+      }
     });
   }
 
@@ -511,7 +600,7 @@
     ensureStyles();
     await refreshSession();
     renderAuthBar();
-    // Soft revenue bar on CV / ID pages only (click-to-open, does not steal nav)
+    installPrintGuard();
     setTimeout(injectSoftRevenue, 2500);
     const sb = ensureSupabase();
     if (sb) {
