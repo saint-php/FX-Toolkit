@@ -10,11 +10,22 @@
 
   function ensureSupabase() {
     if (supabase) return supabase;
-    if (!global.supabase || !cfg.SUPABASE_URL || cfg.SUPABASE_URL.includes('YOUR_PROJECT')) {
+    const lib = global.supabase || global.Supabase || null;
+    if (!lib || !lib.createClient) {
+      console.warn('Supabase JS not loaded. Check the CDN script tag.');
+      return null;
+    }
+    if (!cfg.SUPABASE_URL || cfg.SUPABASE_URL.includes('YOUR_PROJECT') || !cfg.SUPABASE_ANON_KEY) {
       console.warn('Supabase not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY in config.js');
       return null;
     }
-    supabase = global.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+    supabase = lib.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
     return supabase;
   }
 
@@ -59,29 +70,52 @@
 
   async function signup(email, password, name) {
     const sb = ensureSupabase();
-    if (!sb) return { ok: false, error: 'Supabase not configured. Edit config.js' };
+    if (!sb) return { ok: false, error: 'Supabase not configured. Edit config.js / check CDN script.' };
     email = (email || '').trim().toLowerCase();
     if (!email || !password || password.length < 6) return { ok: false, error: 'Email and password (min 6 chars) required.' };
-    const { data, error } = await sb.auth.signUp({
-      email,
-      password,
-      options: { data: { name: name || email.split('@')[0] } }
-    });
-    if (error) return { ok: false, error: error.message };
-    await refreshSession();
-    return { ok: true, user: sessionUser };
+    try {
+      const { data, error } = await sb.auth.signUp({
+        email,
+        password,
+        options: { data: { name: (name || email.split('@')[0]).trim() } }
+      });
+      if (error) return { ok: false, error: error.message };
+      // If email confirmation is ON, session may be null until they confirm
+      if (!data.session) {
+        return {
+          ok: false,
+          error: 'Account created. Check your email and confirm the link, then log in. (Or turn off "Confirm email" in Supabase → Authentication → Providers → Email.)'
+        };
+      }
+      await refreshSession();
+      return { ok: true, user: sessionUser };
+    } catch (e) {
+      return { ok: false, error: e.message || 'Signup failed' };
+    }
   }
 
   async function login(email, password) {
     const sb = ensureSupabase();
-    if (!sb) return { ok: false, error: 'Supabase not configured. Edit config.js' };
-    const { error } = await sb.auth.signInWithPassword({
-      email: (email || '').trim().toLowerCase(),
-      password
-    });
-    if (error) return { ok: false, error: error.message };
-    await refreshSession();
-    return { ok: true, user: sessionUser };
+    if (!sb) return { ok: false, error: 'Supabase not configured. Edit config.js / check CDN script.' };
+    email = (email || '').trim().toLowerCase();
+    if (!email || !password) return { ok: false, error: 'Email and password required.' };
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) {
+        let msg = error.message;
+        if (/confirm|verification/i.test(msg)) {
+          msg = 'Email not confirmed. Open the confirmation link in your inbox, or disable Confirm email in Supabase Auth settings.';
+        } else if (/invalid login/i.test(msg)) {
+          msg = 'Invalid email or password.';
+        }
+        return { ok: false, error: msg };
+      }
+      await refreshSession();
+      if (!sessionUser) return { ok: false, error: 'Login succeeded but session was not saved. Check site URL in Supabase Auth settings.' };
+      return { ok: true, user: sessionUser };
+    } catch (e) {
+      return { ok: false, error: e.message || 'Login failed' };
+    }
   }
 
   async function logout() {
@@ -208,10 +242,18 @@
       const pass = document.getElementById('ct-pass').value;
       const name = isSignup ? (document.getElementById('ct-name')?.value || '') : '';
       const btn = document.getElementById('ct-submit');
-      btn.disabled = true;
-      const res = isSignup ? await signup(email, pass, name) : await login(email, pass);
-      btn.disabled = false;
       const err = document.getElementById('ct-err');
+      err.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = isSignup ? 'Creating…' : 'Signing in…';
+      let res;
+      try {
+        res = isSignup ? await signup(email, pass, name) : await login(email, pass);
+      } catch (e) {
+        res = { ok: false, error: e.message || 'Something went wrong' };
+      }
+      btn.disabled = false;
+      btn.textContent = isSignup ? 'Sign up' : 'Log in';
       if (!res.ok) { err.style.display = 'block'; err.textContent = res.error; return; }
       closeModal();
       renderAuthBar();
@@ -282,16 +324,35 @@
   }
 
   /**
-   * PropellerAds integration point.
-   * When PROPELLER_INTERSTITIAL_ZONE is set, tries to show real ads.
-   * Otherwise uses timed placeholder (for local testing).
+   * Ads ONLY run when user clicks "Watch 2 ads" on the paywall.
+   * Do NOT put Monetag Multitag in <head> — it hijacks all navigation.
+   *
+   * Optional config:
+   *   PROPELLER_SCRIPT_URL  — script loaded once, only when ad flow starts
+   *   PROPELLER_INTERSTITIAL_ZONE — zone id (for your records / custom hooks)
+   *   PROPELLER_DIRECT_LINK — if set, opens this URL for each ad step (Monetag Direct Link)
    */
+  let adScriptLoaded = false;
+  function loadAdScriptOnce() {
+    return new Promise((resolve) => {
+      const url = cfg.PROPELLER_SCRIPT_URL;
+      if (!url || adScriptLoaded) { resolve(); return; }
+      if (document.querySelector('script[data-ct-ad="1"]')) { adScriptLoaded = true; resolve(); return; }
+      const s = document.createElement('script');
+      s.src = url;
+      s.async = true;
+      s.dataset.ctAd = '1';
+      s.onload = () => { adScriptLoaded = true; resolve(); };
+      s.onerror = () => resolve();
+      document.body.appendChild(s);
+    });
+  }
+
   function startAdFlow(type, onUnlocked) {
-    const zone = cfg.PROPELLER_INTERSTITIAL_ZONE;
     let remaining = 2;
+    const directLink = cfg.PROPELLER_DIRECT_LINK || '';
 
     function grantOne() {
-      // Allow one more by decrementing count on server
       const sb = ensureSupabase();
       if (sb && sessionUser && profile) {
         const field = type === 'cv' ? 'cv_count' : 'id_count';
@@ -305,20 +366,40 @@
       alert('Ads complete! You can generate one more ' + (type === 'cv' ? 'resume' : 'ID card') + '.');
     }
 
-    function showPlaceholderAd() {
-      let seconds = 8;
+    async function showOneAd() {
+      await loadAdScriptOnce();
+      let seconds = 10;
+      const step = 3 - remaining;
       showModal(`
-        <h2>Ad ${3 - remaining} of 2</h2>
-        <p class="sub">${zone ? 'Loading ad…' : 'Ad zone not configured yet — placeholder timer.'}</p>
+        <h2>Ad ${step} of 2</h2>
+        <p class="sub">Watch this ad to unlock one more ${type === 'cv' ? 'resume' : 'ID card'}. Navigation on the site stays ad-free.</p>
         <div class="ct-ad-box">
-          <div style="font-size:13px;opacity:0.8;">Sponsored</div>
+          <div style="font-size:13px;opacity:0.8;margin-bottom:8px;">Sponsored</div>
+          <button id="ct-open-ad" style="background:#fff;color:#1E2A32;border:none;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;margin-bottom:12px;">
+            ${directLink ? 'Open ad' : 'Continue'}
+          </button>
           <div class="timer" id="ct-ad-timer">${seconds}</div>
-          <div style="font-size:12px;opacity:0.75;">Please wait…</div>
+          <div style="font-size:12px;opacity:0.75;">Please wait for the timer</div>
         </div>
         <div class="actions"><button id="ct-ad-skip" disabled>Please wait…</button></div>
       `);
+
+      const openBtn = document.getElementById('ct-open-ad');
       const btn = document.getElementById('ct-ad-skip');
       const timerEl = document.getElementById('ct-ad-timer');
+
+      openBtn.onclick = () => {
+        if (directLink) {
+          window.open(directLink, '_blank', 'noopener,noreferrer');
+        } else if (typeof global.showPropellerAd === 'function') {
+          global.showPropellerAd(cfg.PROPELLER_INTERSTITIAL_ZONE, function () {});
+        }
+        // If only a script was loaded, Monetag may show its own unit; user still waits for timer.
+      };
+
+      // Auto-prompt open once
+      setTimeout(() => { try { openBtn.click(); } catch (e) {} }, 300);
+
       const iv = setInterval(() => {
         seconds--;
         if (timerEl) timerEl.textContent = seconds;
@@ -328,26 +409,15 @@
           btn.textContent = remaining > 1 ? 'Next ad →' : 'Unlock generation';
         }
       }, 1000);
+
       btn.onclick = () => {
         remaining--;
-        if (remaining > 0) showPlaceholderAd();
+        if (remaining > 0) showOneAd();
         else grantOne();
       };
     }
 
-    // If Propeller zone configured, try their onclick/interstitial pattern
-    // Propeller often uses: window.open or script tags — exact API depends on your zone type.
-    // After approval, replace showPlaceholderAd() body with their recommended rewarded/interstitial callback.
-    if (zone && typeof global.showPropellerAd === 'function') {
-      global.showPropellerAd(zone, () => {
-        remaining--;
-        if (remaining > 0) startAdFlow(type, onUnlocked);
-        else grantOne();
-      });
-      return;
-    }
-
-    showPlaceholderAd();
+    showOneAd();
   }
 
   function gate(type, doExport) {
