@@ -324,33 +324,34 @@
   }
 
   /**
-   * Ads ONLY run when user clicks "Watch 2 ads" on the paywall.
-   * Do NOT put Monetag Multitag in <head> — it hijacks all navigation.
+   * Unlock ads: only when user chooses "Watch 2 ads".
+   * Uses PROPELLER_DIRECT_LINK (Monetag Direct Link).
+   * Opens on real user clicks (popup blockers block setTimeout opens).
    *
-   * Optional config:
-   *   PROPELLER_SCRIPT_URL  — script loaded once, only when ad flow starts
-   *   PROPELLER_INTERSTITIAL_ZONE — zone id (for your records / custom hooks)
-   *   PROPELLER_DIRECT_LINK — if set, opens this URL for each ad step (Monetag Direct Link)
+   * Soft revenue: optional bar on tool pages only (does not hijack nav links).
    */
-  let adScriptLoaded = false;
-  function loadAdScriptOnce() {
-    return new Promise((resolve) => {
-      const url = cfg.PROPELLER_SCRIPT_URL;
-      if (!url || adScriptLoaded) { resolve(); return; }
-      if (document.querySelector('script[data-ct-ad="1"]')) { adScriptLoaded = true; resolve(); return; }
-      const s = document.createElement('script');
-      s.src = url;
-      s.async = true;
-      s.dataset.ctAd = '1';
-      s.onload = () => { adScriptLoaded = true; resolve(); };
-      s.onerror = () => resolve();
-      document.body.appendChild(s);
-    });
+  function openDirectAd() {
+    const url = (cfg.PROPELLER_DIRECT_LINK || '').trim();
+    if (!url) {
+      alert('Ad link not configured. Set PROPELLER_DIRECT_LINK in config.js');
+      return false;
+    }
+    const w = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!w) {
+      // Popup blocked — navigate top window as fallback so something always shows
+      window.location.href = url;
+      return true;
+    }
+    return true;
   }
 
   function startAdFlow(type, onUnlocked) {
     let remaining = 2;
-    const directLink = cfg.PROPELLER_DIRECT_LINK || '';
+    const directLink = (cfg.PROPELLER_DIRECT_LINK || '').trim();
+    if (!directLink) {
+      alert('No ad link set. Add PROPELLER_DIRECT_LINK in config.js (Monetag Direct Link).');
+      return;
+    }
 
     function grantOne() {
       const sb = ensureSupabase();
@@ -366,51 +367,53 @@
       alert('Ads complete! You can generate one more ' + (type === 'cv' ? 'resume' : 'ID card') + '.');
     }
 
-    async function showOneAd() {
-      await loadAdScriptOnce();
-      let seconds = 10;
+    function showOneAd() {
+      let opened = false;
+      let seconds = 8;
       const step = 3 - remaining;
       showModal(`
         <h2>Ad ${step} of 2</h2>
-        <p class="sub">Watch this ad to unlock one more ${type === 'cv' ? 'resume' : 'ID card'}. Navigation on the site stays ad-free.</p>
+        <p class="sub">Click <strong>Open ad</strong>, view it, then wait for the timer. This is required to unlock one more ${type === 'cv' ? 'resume' : 'ID card'}.</p>
         <div class="ct-ad-box">
-          <div style="font-size:13px;opacity:0.8;margin-bottom:8px;">Sponsored</div>
-          <button id="ct-open-ad" style="background:#fff;color:#1E2A32;border:none;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer;margin-bottom:12px;">
-            ${directLink ? 'Open ad' : 'Continue'}
+          <div style="font-size:13px;opacity:0.8;margin-bottom:10px;">Sponsored</div>
+          <button id="ct-open-ad" style="background:#fff;color:#1E2A32;border:none;border-radius:8px;padding:12px 18px;font-weight:700;cursor:pointer;font-size:14px;">
+            Open ad ${step}
           </button>
-          <div class="timer" id="ct-ad-timer">${seconds}</div>
-          <div style="font-size:12px;opacity:0.75;">Please wait for the timer</div>
+          <div class="timer" id="ct-ad-timer" style="margin-top:12px;">—</div>
+          <div id="ct-ad-hint" style="font-size:12px;opacity:0.75;margin-top:6px;">Click “Open ad” to start</div>
         </div>
-        <div class="actions"><button id="ct-ad-skip" disabled>Please wait…</button></div>
+        <div class="actions"><button id="ct-ad-skip" disabled>Open the ad first</button></div>
       `);
 
       const openBtn = document.getElementById('ct-open-ad');
       const btn = document.getElementById('ct-ad-skip');
       const timerEl = document.getElementById('ct-ad-timer');
+      const hint = document.getElementById('ct-ad-hint');
+      let iv = null;
 
       openBtn.onclick = () => {
-        if (directLink) {
-          window.open(directLink, '_blank', 'noopener,noreferrer');
-        } else if (typeof global.showPropellerAd === 'function') {
-          global.showPropellerAd(cfg.PROPELLER_INTERSTITIAL_ZONE, function () {});
-        }
-        // If only a script was loaded, Monetag may show its own unit; user still waits for timer.
+        const ok = openDirectAd();
+        if (!ok) return;
+        if (opened) return;
+        opened = true;
+        openBtn.textContent = 'Ad opened';
+        openBtn.disabled = true;
+        hint.textContent = 'Please wait…';
+        timerEl.textContent = String(seconds);
+        iv = setInterval(() => {
+          seconds--;
+          timerEl.textContent = String(seconds);
+          if (seconds <= 0) {
+            clearInterval(iv);
+            btn.disabled = false;
+            btn.textContent = remaining > 1 ? 'Next ad →' : 'Unlock generation';
+            hint.textContent = 'You can continue';
+          }
+        }, 1000);
       };
 
-      // Auto-prompt open once
-      setTimeout(() => { try { openBtn.click(); } catch (e) {} }, 300);
-
-      const iv = setInterval(() => {
-        seconds--;
-        if (timerEl) timerEl.textContent = seconds;
-        if (seconds <= 0) {
-          clearInterval(iv);
-          btn.disabled = false;
-          btn.textContent = remaining > 1 ? 'Next ad →' : 'Unlock generation';
-        }
-      }, 1000);
-
       btn.onclick = () => {
+        if (!opened) return;
         remaining--;
         if (remaining > 0) showOneAd();
         else grantOne();
@@ -418,6 +421,29 @@
     }
 
     showOneAd();
+  }
+
+  /** Non-intrusive revenue: tool pages only, user must click (no link hijack) */
+  function injectSoftRevenue() {
+    if (cfg.SOFT_ADS_ENABLED === false) return;
+    const link = (cfg.PROPELLER_DIRECT_LINK || '').trim();
+    if (!link) return;
+    const page = (location.pathname || '').toLowerCase();
+    const onTool = page.includes('cv-builder') || page.includes('id-card');
+    if (!onTool) return;
+    if (document.getElementById('ct-soft-ad')) return;
+
+    const bar = document.createElement('div');
+    bar.id = 'ct-soft-ad';
+    bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9000;background:#1E2A32;color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:center;gap:12px;font-family:Inter,system-ui,sans-serif;font-size:13px;box-shadow:0 -4px 20px rgba(0,0,0,.15);';
+    bar.innerHTML = `
+      <span style="opacity:.85;">Sponsored</span>
+      <button type="button" id="ct-soft-ad-btn" style="background:#B08D57;color:#fff;border:none;border-radius:6px;padding:8px 14px;font-weight:700;cursor:pointer;">View offer</button>
+      <button type="button" id="ct-soft-ad-close" style="background:transparent;border:none;color:#fff;opacity:.7;cursor:pointer;font-size:16px;line-height:1;" aria-label="Close">×</button>
+    `;
+    document.body.appendChild(bar);
+    document.getElementById('ct-soft-ad-btn').onclick = () => openDirectAd();
+    document.getElementById('ct-soft-ad-close').onclick = () => bar.remove();
   }
 
   function gate(type, doExport) {
@@ -485,6 +511,8 @@
     ensureStyles();
     await refreshSession();
     renderAuthBar();
+    // Soft revenue bar on CV / ID pages only (click-to-open, does not steal nav)
+    setTimeout(injectSoftRevenue, 2500);
     const sb = ensureSupabase();
     if (sb) {
       sb.auth.onAuthStateChange(async () => {
