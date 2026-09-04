@@ -7,7 +7,7 @@ window.CT_CONFIG = {
   // Monetag Multitag zone
   PROPELLER_INTERSTITIAL_ZONE: '11723889',
   PROPELLER_SCRIPT_URL: '',
-
+PROPELLER_DIRECT_LINK: 'https://omg10.com/4/11724021',
   // Paystack — ₦1,000 unlock
   PAYSTACK_PUBLIC_KEY: 'pk_live_e4b572df1763ef9a3c5ba79b94d1753e4b8addff',
   PRICE_KOBO: 100000
