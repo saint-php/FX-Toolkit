@@ -410,15 +410,25 @@
     }
 
     async function grantOne() {
-      // Give one extra free generation by decreasing the used count via RPC
-      // (or you can later make a dedicated "grant_extra" RPC)
+      // Give one extra free generation via the rate-limited RPC (capped at
+      // 3/day server-side — see SETUP.md). We now check the result instead
+      // of swallowing errors, so a capped user gets an honest message
+      // instead of a false "you're good to go".
       const sb = ensureSupabase();
+      let capped = false;
       if (sb && sessionUser) {
-        // Simple approach: call a small RPC that subtracts 1 (with floor at 0)
-        await sb.rpc('grant_extra_generation', { p_type: type }).catch(() => {});
+        const { error } = await sb.rpc('grant_extra_generation', { p_type: type });
+        if (error) {
+          capped = /daily ad-credit limit/.test(error.message || '');
+          if (!capped) console.warn('grant_extra_generation failed', error);
+        }
         await loadProfile();
       }
       closeModal();
+      if (capped) {
+        alert("You've reached today's ad-credit limit (3/day). Try again tomorrow, or unlock unlimited for ₦1,000.");
+        return;
+      }
       if (onUnlocked) onUnlocked('ad');
       alert('Ads complete! You can generate one more ' + (type === 'cv' ? 'resume' : 'ID card') + '.');
     }
